@@ -1,5 +1,5 @@
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import sessionmaker, Query
 from sqlalchemy import Column, String, Integer, create_engine
 
 engine = create_engine("sqlite:///flashcard.db?check_same_thread=False")
@@ -9,9 +9,10 @@ Base = declarative_base()
 class Flashcard(Base):
     __tablename__ = 'flashcard'
 
-    id = Column('id', Integer, primary_key=True)
-    question = Column('question', String)
-    answer = Column('answer', String)
+    id = Column(Integer, primary_key=True)
+    question = Column(String)
+    answer = Column(String)
+    box_num = Column(Integer)
 
 
 Base.metadata.create_all(engine)
@@ -28,14 +29,17 @@ def add_flashcard():
         a = input('Answer: ')
         if a.strip() != "":
             break
-    flashcard = Flashcard(question=q, answer=a)
+    flashcard = Flashcard(question=q, answer=a, box_num=0)
     session.add(flashcard)
     session.commit()
 
 
-def practice_flashcards():
-    results = session.query(Flashcard).all()
-    if results:
+def practice_flashcards(session_number):
+    results = session.query(Flashcard).filter(Flashcard.box_num <= session_number).all()
+    if not results:
+        print('There is no flashcard to practice!')
+        print()
+    else:
         for result in results:
             print('Question:', result.question)
             print('press "y" to see the answer:')
@@ -44,6 +48,25 @@ def practice_flashcards():
             option = input()
             if option == 'y' or option == 'Y':
                 print('Answer:', result.answer)
+                print('press "y" if your answer is correct:')
+                print('press "n" if your answer is wrong:')
+                res = input()
+                if res == 'y' or res == 'Y':
+                    card_to_move = session.query(Flashcard).filter(Flashcard.question == result.question)
+                    if card_to_move[0].box_num < 2:
+                        card_to_move.update({'box_num': card_to_move[0].box_num + 1})
+                        session.commit()
+                    elif card_to_move[0].box_num == 2:
+                        card_to_move.delete()
+                        session.commit()
+                elif res == 'n' or res == 'N':
+                    card_to_move = Query(Flashcard, session).filter(Flashcard.question == result.question)
+                    if card_to_move[0].box_num > 0:
+                        card_to_move.update({'box_num': card_to_move[0].box_num - 1})
+                        session.commit()
+                else:
+                    print(f'{res} is not an option')
+
                 print()
             elif option == 'n' or option == 'N':
                 print()
@@ -71,11 +94,9 @@ def practice_flashcards():
                 else:
                     print(f"{inp} is not an option")
 
-    else:
-        print('There is no flashcard to practice')
-
 
 while True:
+    session_num = 0
     print('1. Add flashcards\n2. Practice flashcards\n3. Exit')
     choice = input()
     if choice == '1':
@@ -89,7 +110,8 @@ while True:
             else:
                 print(opt, 'is not an option')
     elif choice == '2':
-        practice_flashcards()
+        practice_flashcards(session_num)
+        session_num += 1
     elif choice == '3':
         print('Bye!')
         break
